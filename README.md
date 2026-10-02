@@ -1,172 +1,278 @@
-# Sushi Restaurant App 🍣
+const state = {
+  customers: [],
+  orders: [],
+  notifications: [],
+  menu: []
+};
 
-Aplicativo de restaurante de sushi com backend, frontend e TDD (Test-Driven Development).
+const customerForm = document.getElementById('customerForm');
+const orderForm = document.getElementById('orderForm');
+const customerSelect = document.getElementById('customerSelect');
+const rewardSelection = document.getElementById('rewardSelection');
+const menuItemsContainer = document.getElementById('menuItems');
+const customerList = document.getElementById('customerList');
+const notificationsEl = document.getElementById('notifications');
+const ordersList = document.getElementById('ordersList');
+const soundButton = document.getElementById('soundButton');
 
-## 📋 Descrição
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Erro ao processar requisição.');
+  }
+  return data;
+}
 
-Plataforma completa de e-commerce para restaurante de sushi com sistema de pontos, cashback e integração com WhatsApp.
+function showToast(message, type = 'success') {
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  toast.style.position = 'fixed';
+  toast.style.right = '20px';
+  toast.style.top = '20px';
+  toast.style.background = type === 'warning' ? '#f59e0b' : '#10b981';
+  toast.style.color = '#fff';
+  toast.style.padding = '12px 16px';
+  toast.style.borderRadius = '10px';
+  toast.style.boxShadow = '0 10px 20px rgba(0,0,0,0.12)';
+  toast.style.zIndex = '50';
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2500);
+}
 
-## ✨ Funcionalidades Principais
+function playAlertSound() {
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return;
+  const context = new AudioContextCtor();
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'triangle';
+  oscillator.frequency.value = 880;
+  gain.gain.value = 0.08;
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + 0.22);
+}
 
-### 1. Sistema de Cadastro de Clientes
-- [x] Cadastro de clientes no aplicativo
-- [x] Validação de dados de entrada
-- [x] Autenticação segura
-- [x] Perfil do cliente com histórico
+async function loadCustomers() {
+  const customers = await fetchJson('/api/customers');
+  state.customers = customers;
+  renderCustomerSelect();
+  renderCustomers();
+}
 
-### 2. Sistema de Pontos e Cashback
-- [x] **Acumulação de Pontos**: 10 pontos por compra realizada
-- [x] **Limite de Resgate**: 50 pontos para liberar 1 produto gratuito
-- [x] **Categorias Elegíveis**: Entradas ou Sobremesas
-- [x] **Aviso de Pontos**: Notificações automáticas após cada compra
-- [x] **Aviso de Resgate**: Alerta quando cliente atinge 50 pontos
-- [x] **Resgate**: Cliente pode incluir produto gratuito no próximo pedido
+async function loadNotifications() {
+  const notifications = await fetchJson('/api/notifications');
+  state.notifications = notifications;
+  renderNotifications();
+}
 
-### 3. Sistema de Pedidos
-- [x] Carrinho de compras funcional
-- [x] Processo de checkout simplificado
-- [x] Confirmação de pedido com detalhes
-- [x] Histórico de pedidos do cliente
+async function loadOrders() {
+  const orders = await fetchJson('/api/orders');
+  state.orders = orders;
+  renderOrders();
+}
 
-### 4. Integração de Impressão e Notificação
-- [x] **Impressão Padrão**: Padrão de impressão configurável conforme cadastro do cliente
-- [x] **Duas Vias**: 
-  - Via 1: Enviado automaticamente para WhatsApp (+55 49 99981-5049)
-  - Via 2: Impressão local no padrão da cozinha
-- [x] **Envio Automático**: Baseado em configurações de cada cliente cadastrado
-- [x] **Alerta Sonoro**: Emissão de som ao receber novo pedido no aplicativo
+function renderCustomerSelect() {
+  customerSelect.innerHTML = '<option value="">Selecione</option>';
+  state.customers.forEach((customer) => {
+    const option = document.createElement('option');
+    option.value = customer.id;
+    option.textContent = `${customer.name} (${customer.points} pts)`;
+    customerSelect.appendChild(option);
+  });
 
-### 5. Notificações em Tempo Real
-- [x] Sistema de notificações para clientes (pontos acumulados)
-- [x] Alerta de resgate disponível
-- [x] Notificação de confirmação de pedido
-- [x] Alert sonoro para novos pedidos (lado do restaurante)
+  updateRewardOptions();
+}
 
-## 🧪 Testes Implementados
+function updateRewardOptions() {
+  const customerId = customerSelect.value;
+  const customer = state.customers.find((entry) => entry.id === customerId);
+  const options = ['<option value="">Nenhum</option>'];
 
-### Testes de Cadastro
-```
-✓ Cadastro de cliente com dados válidos
-✓ Validação de campos obrigatórios
-✓ Criação de perfil único por CPF
-✓ Inicialização de pontos em 0
-```
+  if (customer && customer.rewardAvailable) {
+    const eligibleItems = [
+      { id: 'salada', name: 'Salada Japonesa' },
+      { id: 'dorayaki', name: 'Dorayaki' },
+      { id: 'mochi', name: 'Mochi' },
+      { id: 'temaki', name: 'Temaki de Salmão' },
+      { id: 'sorvete', name: 'Sorvete de Matcha' }
+    ];
 
-### Testes de Sistema de Pontos
-```
-✓ Acumulação de 10 pontos por compra
-✓ Contador de pontos atualiza corretamente
-✓ Aviso enviado ao cliente após cada compra
-✓ Limite máximo de 50 pontos para resgate
-✓ Aviso especial quando atinge 50 pontos
-✓ Resgate de produto gratuito após atingir 50 pontos
-✓ Pontos resetam para 0 após resgate
-```
+    eligibleItems.forEach((item) => {
+      options.push(`<option value="${item.id}">${item.name}</option>`);
+    });
+  }
 
-### Testes de Pedidos
-```
-✓ Criação de novo pedido
-✓ Adição de produtos ao carrinho
-✓ Cálculo correto do total
-✓ Validação de estoque
-✓ Inclusão de produto gratuito resgatado
-✓ Confirmação de pedido
-✓ Histórico salvo no cliente
-```
+  rewardSelection.innerHTML = options.join('');
+}
 
-### Testes de Impressão e Notificação
-```
-✓ Geração correta do cupom de pedido
-✓ Formatação padrão de impressão
-✓ Envio automático para WhatsApp (+55 49 99981-5049)
-✓ Geração de duas vias (WhatsApp + Impressora)
-✓ Alerta sonoro ativado ao receber pedido
-✓ Configuração respeitada conforme cadastro do cliente
-✓ Envio automático sem intervenção manual
-```
+function renderCustomers() {
+  customerList.innerHTML = '';
+  state.customers.forEach((customer) => {
+    const card = document.createElement('div');
+    card.className = 'customer-card';
+    const rewardBadge = customer.rewardAvailable
+      ? '<span class="badge success">Resgate disponível</span>'
+      : customer.points >= 50
+        ? '<span class="badge warning">50 pontos</span>'
+        : '<span class="badge">Pontos em andamento</span>';
 
-### Testes de Notificações
-```
-✓ Notificação de pontos acumulados
-✓ Notificação de resgate disponível
-✓ Notificação de confirmação de pedido
-✓ Sound alert para novos pedidos (restaurante)
-✓ Histórico de notificações mantido
-```
+    card.innerHTML = `
+      <strong>${customer.name}</strong><br />
+      ${customer.phone}<br />
+      CPF: ${customer.cpf}<br />
+      Pontos: <strong>${customer.points}</strong><br />
+      ${rewardBadge}
+    `;
+    customerList.appendChild(card);
+  });
+}
 
-## 🏗️ Arquitetura
+function renderNotifications() {
+  notificationsEl.innerHTML = '';
+  state.notifications.forEach((notice) => {
+    const item = document.createElement('div');
+    item.className = `notification-card ${notice.type || 'info'}`;
+    item.innerHTML = `<strong>${new Date(notice.createdAt).toLocaleString('pt-BR')}</strong><br />${notice.message}`;
+    notificationsEl.appendChild(item);
+  });
+}
 
-### Backend
-- Node.js / Express
-- Banco de dados (MongoDB/PostgreSQL)
-- Sistema de fila de mensagens para WhatsApp
-- API REST
+function renderOrders() {
+  ordersList.innerHTML = '';
+  state.orders.forEach((order) => {
+    const card = document.createElement('div');
+    card.className = 'order-card';
 
-### Frontend
-- React / Vue / Angular
-- Interface intuitiva
-- Notificações em tempo real
-- Sistema de carrinho de compras
+    const itemSummary = order.items
+      .map((item) => `${item.name} x${item.quantity} = R$ ${item.total.toFixed(2)}`)
+      .join('<br />');
 
-### Integrações
-- **WhatsApp API**: Envio de pedidos (+55 49 99981-5049)
-- **Sistema de Impressão**: Integração com impressoras de cozinha
-- **Sistema de Áudio**: Alert sonoro para pedidos
+    card.innerHTML = `
+      <strong>${order.customerName}</strong> | ${new Date(order.createdAt).toLocaleString('pt-BR')}<br />
+      Pontos ganhos: ${order.pointsEarned}<br />
+      ${itemSummary}<br />
+      <strong>Total:</strong> R$ ${order.total.toFixed(2)}<br />
+      ${order.reward ? `<strong>Produto grátis:</strong> ${order.reward.item.name}` : ''}
+      <pre>${order.printReceipt || ''}</pre>
+    `;
 
-## 🚀 Como Usar
+    ordersList.appendChild(card);
+  });
+}
 
-### Instalar Dependências
-```bash
-npm install
-```
+customerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = new FormData(customerForm);
+  const payload = {
+    name: form.get('name'),
+    phone: form.get('phone'),
+    cpf: form.get('cpf')
+  };
 
-### Executar Testes
-```bash
-npm test
-```
+  try {
+    const response = await fetchJson('/api/customers', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    customerForm.reset();
+    await loadCustomers();
+    await loadNotifications();
+    showToast(response.message || 'Cliente cadastrado.');
+  } catch (error) {
+    showToast(error.message, 'warning');
+  }
+});
 
-### Iniciar Aplicação
-```bash
-npm start
-```
+orderForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const customerId = customerSelect.value;
+  const selectedItems = Array.from(document.querySelectorAll('.menu-item')).map((item) => {
+    const input = item.querySelector('input');
+    const id = item.dataset.id;
+    const quantity = Number(input.value || 0);
+    if (quantity > 0) return { id, quantity };
+    return null;
+  }).filter(Boolean);
 
-## 📝 Fluxo de Funcionamento
+  if (!customerId || selectedItems.length === 0) {
+    showToast('Selecione um cliente e pelo menos 1 item.', 'warning');
+    return;
+  }
 
-### Cliente
-1. Cliente faz cadastro no app
-2. Cliente realiza compra
-3. Sistema acumula 10 pontos
-4. Cliente recebe notificação de pontos
-5. Ao atingir 50 pontos, recebe aviso de resgate
-6. Cliente seleciona produto gratuito (Entrada ou Sobremesa)
-7. Cliente faz novo pedido incluindo produto gratuito
-8. Pedido é confirmado
+  try {
+    const payload = {
+      customerId,
+      items: selectedItems,
+      rewardSelection: rewardSelection.value || null
+    };
 
-### Restaurante
-1. Novo pedido recebido no aplicativo
-2. Alerta sonoro é acionado
-3. Cupom é gerado no padrão de impressão
-4. Duas vias são criadas:
-   - Via 1: Enviada para WhatsApp (+55 49 99981-5049)
-   - Via 2: Impressa na impressora de cozinha
-5. Equipe de cozinha prepara o pedido
+    const response = await fetchJson('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
 
-## 🔧 Configuração
+    playAlertSound();
+    showToast('Pedido confirmado e enviado para WhatsApp e impressão.', 'success');
 
-### Dados por Cliente
-- Padrão de impressão configurável
-- Formato de cupom personalizado
-- Destinatário de WhatsApp (padrão: +55 49 99981-5049)
+    await loadCustomers();
+    await loadNotifications();
+    await loadOrders();
 
-## 📞 Suporte
+    console.log('WhatsApp:', response.whatsapp);
+    console.log('Impressão:', response.print);
+  } catch (error) {
+    showToast(error.message, 'warning');
+  }
+});
 
-Para dúvidas ou problemas, entre em contato através do repositório ou WhatsApp.
+customerSelect.addEventListener('change', updateRewardOptions);
+soundButton.addEventListener('click', playAlertSound);
 
-## 📄 Licença
+function buildMenu() {
+  const items = [
+    { id: 'sashimi', name: 'Sashimi Especial', category: 'Entrada', price: 35 },
+    { id: 'niguiri', name: 'Niguiris Clássicos', category: 'Entrada', price: 28 },
+    { id: 'salada', name: 'Salada Japonesa', category: 'Entrada', price: 25 },
+    { id: 'temaki', name: 'Temaki de Salmão', category: 'Entrada', price: 32 },
+    { id: 'dorayaki', name: 'Dorayaki', category: 'Sobremesa', price: 18 },
+    { id: 'mochi', name: 'Mochi', category: 'Sobremesa', price: 16 },
+    { id: 'sorvete', name: 'Sorvete de Matcha', category: 'Sobremesa', price: 20 },
+    { id: 'cheesecake', name: 'Cheesecake Japonesa', category: 'Sobremesa', price: 22 },
+    { id: 'sushiCombo', name: 'Combo Sushi Premium', category: 'Principal', price: 70 },
+    { id: 'hotRoll', name: 'Hot Roll', category: 'Principal', price: 42 }
+  ];
 
-Este projeto está em desenvolvimento.
+  state.menu = items;
+  menuItemsContainer.innerHTML = '';
 
----
+  items.forEach((item) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'menu-item';
+    wrapper.dataset.id = item.id;
+    wrapper.innerHTML = `
+      <div class="meta">
+        <strong>${item.name}</strong>
+        <small>${item.category}</small>
+      </div>
+      <div class="price">R$ ${item.price.toFixed(2)}</div>
+      <input type="number" min="0" value="0" aria-label="Quantidade de ${item.name}" />
+    `;
+    menuItemsContainer.appendChild(wrapper);
+  });
+}
 
-**Status**: Em Desenvolvimento e Testes ✅
-**Última Atualização**: 2026-10-02
+async function init() {
+  buildMenu();
+  await loadCustomers();
+  await loadNotifications();
+  await loadOrders();
+}
+
+init();

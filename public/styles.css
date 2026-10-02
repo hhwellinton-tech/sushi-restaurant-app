@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sushi Restaurant App</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Sistema de restaurante</p>
+          <h1>Sushi Restaurant App</h1>
+        </div>
+        <button id="soundButton" class="secondary-btn">Testar som</button>
+      </header>
+
+      <section class="grid">
+        <div class="card">
+          <h2>Cadastro do cliente</h2>
+          <form id="customerForm">
+            <label>
+              Nome
+              <input type="text" name="name" required />
+            </label>
+            <label>
+              Telefone
+              <input type="tel" name="phone" placeholder="(49) 99999-9999" required />
+            </label>
+            <label>
+              CPF
+              <input type="text" name="cpf" placeholder="000.000.000-00" required />
+            </label>
+            <button type="submit">Cadastrar cliente</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Nova compra</h2>
+          <form id="orderForm">
+            <label>
+              Cliente
+              <select id="customerSelect" required></select>
+            </label>
+
+            <div class="item-list" id="menuItems"></div>
+
+            <label>
+              Produto grátis para resgate (Entrada ou Sobremesa)
+              <select id="rewardSelection">
+                <option value="">Nenhum</option>
+              </select>
+            </label>
+
+            <button type="submit">Confirmar pedido</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="dashboard">
+        <div class="card">
+          <h2>Clientes cadastrados</h2>
+          <div id="customerList" class="customer-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Notificações</h2>
+          <div id="notifications" class="notification-list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Pedidos realizados</h2>
+        <div id="ordersList" class="orders-list"></div>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

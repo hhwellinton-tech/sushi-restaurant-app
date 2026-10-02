@@ -1,0 +1,290 @@
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_PATH = path.join(__dirname, 'data', 'store.json');
+
+const MENU = [
+  { id: 'sashimi', name: 'Sashimi Especial', category: 'Entrada', price: 35 },
+  { id: 'niguiri', name: 'Niguiris Clássicos', category: 'Entrada', price: 28 },
+  { id: 'salada', name: 'Salada Japonesa', category: 'Entrada', price: 25 },
+  { id: 'temaki', name: 'Temaki de Salmão', category: 'Entrada', price: 32 },
+  { id: 'dorayaki', name: 'Dorayaki', category: 'Sobremesa', price: 18 },
+  { id: 'mochi', name: 'Mochi', category: 'Sobremesa', price: 16 },
+  { id: 'sorvete', name: 'Sorvete de Matcha', category: 'Sobremesa', price: 20 },
+  { id: 'cheesecake', name: 'Cheesecake Japonesa', category: 'Sobremesa', price: 22 },
+  { id: 'sushiCombo', name: 'Combo Sushi Premium', category: 'Principal', price: 70 },
+  { id: 'hotRoll', name: 'Hot Roll', category: 'Principal', price: 42 }
+];
+
+const defaultStore = {
+  customers: [],
+  orders: [],
+  notifications: []
+};
+
+function ensureDataFile() {
+  const dir = path.dirname(DATA_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(DATA_PATH)) {
+    fs.writeFileSync(DATA_PATH, JSON.stringify(defaultStore, null, 2));
+  }
+}
+
+function loadStore() {
+  ensureDataFile();
+  const raw = fs.readFileSync(DATA_PATH, 'utf8');
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return structuredClone(defaultStore);
+  }
+}
+
+function saveStore(store) {
+  fs.writeFileSync(DATA_PATH, JSON.stringify(store, null, 2));
+}
+
+function addNotification(message, type = 'info') {
+  const store = loadStore();
+  const notification = {
+    id: Date.now() + Math.random(),
+    type,
+    message,
+    createdAt: new Date().toISOString()
+  };
+  store.notifications.unshift(notification);
+  saveStore(store);
+  return notification;
+}
+
+function buildWhatsAppMessage(order) {
+  const lines = [
+    '🍣 NOVO PEDIDO - SUSHI RESTAURANT',
+    `Cliente: ${order.customerName}`,
+    `Telefone: ${order.customerPhone}`,
+    `Pedido #: ${order.id}`,
+    '---',
+    ...order.items.map((item) => `${item.name} x${item.quantity} - R$ ${item.total.toFixed(2)}`),
+    order.reward && order.reward.item ? `Produto grátis: ${order.reward.item.name}` : '',
+    '---',
+    `Subtotal: R$ ${order.subtotal.toFixed(2)}`,
+    `Desconto: R$ ${order.discount.toFixed(2)}`,
+    `Total: R$ ${order.total.toFixed(2)}`,
+    `Pontos: ${order.pointsEarned}`,
+    '📲 WhatsApp: +55 49 99981-5049'
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+function buildPrintReceipt(order) {
+  const lines = [
+    '========================================',
+    'SUSHI RESTAURANT - PEDIDO OFICIAL',
+    '========================================',
+    `Cliente: ${order.customerName}`,
+    `CPF: ${order.customerCpf}`,
+    `Pedido: ${order.id}`,
+    `Data: ${new Date(order.createdAt).toLocaleString('pt-BR')}`,
+    '----------------------------------------',
+    ...order.items.map((item) => `${item.name} x${item.quantity} - R$ ${item.total.toFixed(2)}`),
+    order.reward && order.reward.item ? `PROMOÇÃO: ${order.reward.item.name} GRÁTIS` : '',
+    '----------------------------------------',
+    `Subtotal: R$ ${order.subtotal.toFixed(2)}`,
+    `Desconto: R$ ${order.discount.toFixed(2)}`,
+    `TOTAL: R$ ${order.total.toFixed(2)}`,
+    '========================================',
+    'Atendimento via WhatsApp +55 49 99981-5049',
+    'Impressão padrão do restaurante',
+    '========================================'
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+function getCustomerById(id) {
+  const store = loadStore();
+  return store.customers.find((customer) => customer.id === id);
+}
+
+function createCustomer(req, res) {
+  const { name, phone, cpf } = req.body;
+  if (!name || !phone || !cpf) {
+    return res.status(400).json({ error: 'Nome, telefone e CPF são obrigatórios.' });
+  }
+
+  const store = loadStore();
+  const customerExists = store.customers.some((customer) => customer.cpf === cpf || customer.phone === phone);
+  if (customerExists) {
+    return res.status(409).json({ error: 'Cliente já cadastrado com esse CPF ou telefone.' });
+  }
+
+  const customer = {
+    id: `cli-${Date.now()}`,
+    name,
+    phone,
+    cpf,
+    points: 0,
+    rewardAvailable: false,
+    createdAt: new Date().toISOString()
+  };
+
+  store.customers.push(customer);
+  saveStore(store);
+
+  addNotification(`Cliente ${name} cadastrado com sucesso.`, 'success');
+
+  return res.status(201).json({ customer, message: 'Cadastro realizado com sucesso.' });
+}
+
+function listCustomers(req, res) {
+  const store = loadStore();
+  return res.json(store.customers);
+}
+
+function parseOrderItems(items) {
+  return items.map((item) => {
+    const menuItem = MENU.find((entry) => entry.id === item.id);
+    if (!menuItem) {
+      throw new Error(`Item não encontrado: ${item.id}`);
+    }
+    const quantity = Number(item.quantity || 1);
+    return {
+      id: menuItem.id,
+      name: menuItem.name,
+      category: menuItem.category,
+      price: menuItem.price,
+      quantity,
+      total: menuItem.price * quantity
+    };
+  });
+}
+
+function createOrder(req, res) {
+  try {
+    const store = loadStore();
+    const { customerId, items, rewardSelection } = req.body;
+
+    if (!customerId || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Cliente e itens do pedido são obrigatórios.' });
+    }
+
+    const customer = store.customers.find((entry) => entry.id === customerId);
+    if (!customer) {
+      return res.status(404).json({ error: 'Cliente não encontrado.' });
+    }
+
+    const parsedItems = parseOrderItems(items);
+    const subtotal = parsedItems.reduce((sum, item) => sum + item.total, 0);
+
+    let reward = null;
+    let discount = 0;
+    if (rewardSelection && customer.rewardAvailable && customer.points >= 50) {
+      const freeItem = MENU.find((item) => item.id === rewardSelection);
+      if (!freeItem || !['Entrada', 'Sobremesa'].includes(freeItem.category)) {
+        return res.status(400).json({ error: 'Produto grátis deve ser entrada ou sobremesa.' });
+      }
+      reward = { item: freeItem };
+      discount = freeItem.price;
+    }
+
+    const total = subtotal - discount;
+    const pointsEarned = 10;
+    const newPoints = customer.points + pointsEarned;
+    const rewardAvailable = newPoints >= 50;
+
+    const order = {
+      id: `ped-${Date.now()}`,
+      customerId: customer.id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      customerCpf: customer.cpf,
+      items: parsedItems,
+      subtotal,
+      discount,
+      total,
+      pointsEarned,
+      reward,
+      createdAt: new Date().toISOString(),
+      status: 'novo'
+    };
+
+    customer.points = rewardAvailable ? 50 : newPoints;
+    customer.rewardAvailable = rewardAvailable;
+
+    if (reward && customer.rewardAvailable) {
+      customer.points = 0;
+      customer.rewardAvailable = false;
+      order.pointsEarned = 10;
+      order.reward = reward;
+      order.discount = discount;
+      order.total = subtotal - discount;
+    }
+
+    if (reward && !customer.rewardAvailable && customer.points >= 50) {
+      customer.points = customer.points - 50;
+      customer.rewardAvailable = false;
+    }
+
+    store.orders.unshift(order);
+    saveStore(store);
+
+    addNotification(
+      reward
+        ? `${customer.name} resgatou ${reward.item.name} grátis e ganhou 10 pontos na compra.`
+        : `${customer.name} ganhou 10 pontos na compra. Total atual: ${customer.points} pontos.`,
+      reward ? 'success' : 'info'
+    );
+
+    if (rewardAvailable && !reward) {
+      addNotification(`${customer.name} atingiu 50 pontos. Produto gratuito disponível para resgate!`, 'warning');
+    }
+
+    order.whatsAppMessage = buildWhatsAppMessage(order);
+    order.printReceipt = buildPrintReceipt(order);
+
+    return res.status(201).json({
+      order,
+      customer,
+      reminder: rewardAvailable ? 'Cliente já pode usar resgate de produto grátis.' : 'Pontos acumulados com sucesso.',
+      whatsapp: order.whatsAppMessage,
+      print: order.printReceipt
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao processar pedido.' });
+  }
+}
+
+function listOrders(req, res) {
+  const store = loadStore();
+  return res.json(store.orders);
+}
+
+function listNotifications(req, res) {
+  const store = loadStore();
+  return res.json(store.notifications.slice(0, 20));
+}
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, service: 'sushi-restaurant-app' });
+});
+
+app.post('/api/customers', createCustomer);
+app.get('/api/customers', listCustomers);
+app.post('/api/orders', createOrder);
+app.get('/api/orders', listOrders);
+app.get('/api/notifications', listNotifications);
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+module.exports = { MENU, buildWhatsAppMessage, buildPrintReceipt };

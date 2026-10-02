@@ -1,0 +1,23 @@
+{
+  "name": "sushi-restaurant-app",
+  "version": "1.0.0",
+  "description": "Aplicativo de restaurante de sushi com sistema de pontos, cashback, WhatsApp e impressão de pedidos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "sushi",
+    "restaurant",
+    "points",
+    "cashback",
+    "whatsapp",
+    "delivery"
+  ],
+  "author": "hhwellinton-tech",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
